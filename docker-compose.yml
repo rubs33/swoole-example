@@ -1,0 +1,12 @@
+version: "3.7"
+services:
+  webapp:
+    build:
+      context: .
+    volumes:
+      - ./app:/app
+      - /app/vendor
+    env_file:
+      - .env
+    ports:
+      - "${APP_PORT:-3000}:${APP_PORT:-3000}"
