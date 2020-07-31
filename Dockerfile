@@ -1,37 +1,63 @@
-FROM php:7.4-cli
+FROM php:7.4-cli-alpine
 
-# Prepare deps
-RUN apt-get update && \
-    apt-get install openssl -y && \
-    apt-get install libssl-dev -y && \
-    apt-get install wget -y && \
-    apt-get install git -y && \
-    apt-get install procps -y
+# Prepare PHP deps
+RUN apk add --no-cache \
+        openssl \
+        libstdc++
 
-RUN cd /tmp && \
+# Install swoole
+RUN apk add --no-cache --virtual .build-swoole-deps \
+        $PHPIZE_DEPS \
+        autoconf \
+        automake \
+        g++ \
+        gcc \
+        git \
+        linux-headers \
+        make \
+        openssl-dev && \
+    mkdir -p /build && \
+    cd /build && \
     git clone https://github.com/swoole/swoole-src.git && \
     cd swoole-src && \
     git checkout v4.5.2 && \
-    phpize  && \
-    ./configure --enable-openssl && \
-    make && \
-    make install
+    phpize && \
+    ./configure --with-php-config=/usr/local/bin/php-config --enable-openssl --enable-http2 && \
+    make -j$(nproc) && make install && \
+    cd / && \
+    rm -rf /build && \
+    echo 'extension=swoole.so' > /usr/local/etc/php/conf.d/swoole.ini && \
+    apk del .build-swoole-deps
 
-RUN touch /usr/local/etc/php/conf.d/swoole.ini && \
-    echo 'extension=swoole.so' > /usr/local/etc/php/conf.d/swoole.ini
+# Install PHP deps
+RUN apk add --no-cache --virtual .build-php-deps \
+        autoconf \
+        automake \
+        g++ \
+        gcc \
+        make && \
+    docker-php-ext-install pdo_mysql && \
+    pecl install redis && \
+    docker-php-ext-enable redis && \
+    apk del .build-php-deps
 
-RUN wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.2/dumb-init_1.2.2_amd64
-RUN chmod +x /usr/local/bin/dumb-init
+# Clean container
+RUN rm -rf \
+        /usr/src/php.tar.xz \
+        /usr/local/include/php/ \
+        /usr/local/bin/php-cgi \
+        /usr/local/bin/phpdbg \
+        /usr/local/bin/phpize \
+        /tmp/*
+
+# Ensure PHP deps are available
+RUN php -m | grep -iE '^swoole$' && \
+    php -m | grep -iE '^pdo$' && \
+    php -m | grep -iE '^pdo_mysql$' && \
+    php -m | grep -iE '^redis$'
 
 # Prepare app
 WORKDIR /app
 COPY app /app
 
-# Clean container
-RUN apt-get remove git -y && \
-    apt-get remove wget -y && \
-    apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/*
-
-ENTRYPOINT ["/usr/local/bin/dumb-init", "--", "php"]
-CMD ["/app/server.php"]
+CMD ["php", "/app/server.php"]

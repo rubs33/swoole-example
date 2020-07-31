@@ -7,7 +7,7 @@ $http->on('start', static function ($server) {
 
 $http->on('request', function ($request, $response) {
     $response->header('Content-Type', 'text/plain');
-    $response->end("Hello World 2\n");
+    $response->end("Hello World\n");
 
     fwrite(STDOUT, "REQUEST!\n");
 });
